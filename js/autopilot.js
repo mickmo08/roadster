@@ -29,7 +29,8 @@ export class Autopilot {
     const steer = Math.max(-1, Math.min(1, delta / Math.max(car.maxSteerAngle(), 1e-3)));
 
     // Target speed: corner limits ahead, back-propagated with a braking budget.
-    const latLimit = SPEC.mu * SPEC.latGrip * G * this.caution;
+    // Use a fraction of the fan-assisted grip so the ride-along stays composed.
+    const latLimit = car.latLimit() * this.caution * 0.7;
     const decel = SPEC.brakeG * G * 0.7;
     const horizon = (v * v) / (2 * decel) + 60;
     let vt = Math.min(SPEC.vMax, this.maxSpeed);

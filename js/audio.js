@@ -97,13 +97,40 @@ export class AudioEngine {
     loopNoise().connect(sq);
     sq.connect(this.squealGain).connect(this.master);
 
-    // Thrusters
+    // Cold-gas jets: a hard high-pressure hiss plus a chest-thumping low roar.
     this.thrustGain = ctx.createGain();
     this.thrustGain.gain.value = 0;
     const th = ctx.createBiquadFilter();
     th.type = 'highpass';
-    th.frequency.value = 500;
+    th.frequency.value = 900;
     loopNoise().connect(th).connect(this.thrustGain).connect(this.master);
+    this.roarGain = ctx.createGain();
+    this.roarGain.gain.value = 0;
+    const roar = ctx.createBiquadFilter();
+    roar.type = 'lowpass';
+    roar.frequency.value = 220;
+    loopNoise().connect(roar).connect(this.roarGain).connect(this.master);
+
+    // Suction fans: a high, slightly rough whine.
+    this.fanGain = ctx.createGain();
+    this.fanGain.gain.value = 0;
+    this.fanOsc = ctx.createOscillator();
+    this.fanOsc.type = 'sawtooth';
+    this.fanOsc.frequency.value = 410;
+    const fanF = ctx.createBiquadFilter();
+    fanF.type = 'bandpass';
+    fanF.frequency.value = 820;
+    fanF.Q.value = 3;
+    this.fanOsc.connect(fanF).connect(this.fanGain).connect(this.master);
+    this.fanOsc.start();
+
+    // Distant rocket launch rumble
+    this.rumbleGain = ctx.createGain();
+    this.rumbleGain.gain.value = 0;
+    const rf = ctx.createBiquadFilter();
+    rf.type = 'lowpass';
+    rf.frequency.value = 90;
+    loopNoise().connect(rf).connect(this.rumbleGain).connect(this.master);
   }
 
   setMuted(m) {
@@ -136,13 +163,18 @@ export class AudioEngine {
     this.invGain.gain.setTargetAtTime(0.004 + load * 0.012, t, k);
 
     const interior = s.interior ? 0.55 : 1;
-    const w = Math.min(1, (v / 90) ** 2);
+    const w = Math.min(1, ((s.wind ?? v) / 90) ** 2);
     this.windGain.gain.setTargetAtTime(w * 0.55 * interior, t, k);
-    this.windFilter.frequency.setTargetAtTime(300 + v * 25, t, k);
+    this.windFilter.frequency.setTargetAtTime(300 + (s.wind ?? v) * 25, t, k);
     this.roadGain.gain.setTargetAtTime(Math.min(0.5, v / 60) * (s.offRoad ? 1.4 : 0.35) * interior, t, k);
     this.roadFilter.frequency.setTargetAtTime(s.offRoad ? 90 : 160 + v * 2, t, k);
     this.squealGain.gain.setTargetAtTime(v > 3 && !s.offRoad ? s.slip * 0.6 : 0, t, 0.04);
-    this.thrustGain.gain.setTargetAtTime(s.thrusting ? 0.8 : 0, t, 0.03);
+    const jets = s.jets ?? (s.thrusting ? 1 : 0);
+    this.thrustGain.gain.setTargetAtTime(Math.min(1, jets) * 0.55, t, 0.03);
+    this.roarGain.gain.setTargetAtTime(Math.min(1.2, jets) * 0.9, t, 0.04);
+    this.fanGain.gain.setTargetAtTime((s.fan ?? 0) * 0.018 * interior, t, 0.2);
+    this.fanOsc.frequency.setTargetAtTime(400 + Math.min(60, v) * 1.5, t, 0.2);
+    this.rumbleGain.gain.setTargetAtTime((s.rumble ?? 0) * 1.2, t, 0.3);
   }
 
   beep(freq = 880, dur = 0.15, vol = 0.25) {

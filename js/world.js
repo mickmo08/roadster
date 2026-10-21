@@ -1,6 +1,7 @@
 // Scene construction: sky, lighting, terrain, road surface and scenery.
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { buildArena, heightAt as arenaHeight, onPad } from './arena.js';
 
 const TIMES = {
   day: { elevation: 38, azimuth: 150, exposure: 0.5, turbidity: 6, rayleigh: 1.4, sun: 2.8, hemi: 0.9, fog: 0xbcd0e0 },
@@ -12,6 +13,7 @@ const THEMES = {
   desert: { ground: [196, 160, 118], groundVar: 26, offGrip: 0.6, offRoll: 3.5, name: 'Desert Dragway' },
   salt: { ground: [232, 230, 224], groundVar: 14, offGrip: 0.85, offRoll: 1.5, name: 'Salt Flats' },
   coast: { ground: [86, 122, 62], groundVar: 30, offGrip: 0.55, offRoll: 4.5, name: 'Island Coast Circuit' },
+  arena: { ground: [184, 160, 124], groundVar: 24, offGrip: 0.8, offRoll: 2.5, name: 'Proving Ground' },
 };
 
 function canvasTexture(size, draw, repeat = 1) {
@@ -161,11 +163,28 @@ export class World {
     if (opts.decor === 'drag') this.buildDragDecor(opts);
     if (opts.decor === 'salt') this.buildSaltDecor(opts);
     if (opts.decor === 'coast') this.buildCoastDecor(opts);
+    this.arena = opts.decor === 'arena' ? buildArena(this) : null;
+    if (this.arena) this.mountains(70, 3000, 7000, { color: 0x9b7b5c, hMin: 120, hMax: 500 });
     scene.fog = new THREE.Fog(this.time.fog, 300, theme === 'coast' ? 5200 : 7000);
     return scene;
   }
 
-  surfaceAt(lateral) {
+  /** Drivable surface height: ramps, platforms and the like in the arena, flat elsewhere. */
+  heightAt(x, z) {
+    return this.arena ? arenaHeight(x, z) : 0;
+  }
+
+  get rails() {
+    return this.arena?.rails ?? [];
+  }
+
+  /** Per-frame animation (the arena's rocket launch). Returns rumble 0..1. */
+  update(dt, fx, camPos) {
+    return this.arena ? this.arena.update(dt, fx, camPos) : 0;
+  }
+
+  surfaceAt(lateral, x, z) {
+    if (this.arena && onPad(x, z)) return { grip: 1, rolling: 1, onRoad: true };
     if (Math.abs(lateral) <= this.track.width / 2 + 0.6) return { grip: 1, rolling: 1, onRoad: true };
     return { grip: this.theme.offGrip, rolling: this.theme.offRoll, onRoad: false };
   }

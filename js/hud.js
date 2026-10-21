@@ -19,8 +19,10 @@ export class Hud {
       battFill: $('batt-fill'),
       battPct: $('batt-pct'),
       range: $('range'),
-      thrust: $('thrust'),
-      thrustFill: $('thrust-fill'),
+      gas: $('gas'),
+      gasFill: $('gas-fill'),
+      gasPct: $('gas-pct'),
+      alt: $('alt'),
       banner: $('banner'),
       toast: $('toast'),
       ap: $('ap'),
@@ -40,9 +42,9 @@ export class Hud {
     this.root.hidden = !on;
   }
 
-  setMode(title, { thrusters, tree, map }) {
+  setMode(title, { gas, tree, map }) {
     this.el.mode.textContent = title;
-    this.el.thrust.hidden = !thrusters;
+    this.el.gas.hidden = !gas;
     this.el.tree.hidden = !tree;
     this.map.hidden = !map;
     this.el.banner.className = '';
@@ -144,14 +146,24 @@ export class Hud {
     const r = units === 'mph' ? car.rangeKm / 1.609344 : car.rangeKm;
     e.range.textContent = `${Math.round(r)} ${units === 'mph' ? 'mi' : 'km'}`;
 
-    if (!e.thrust.hidden) {
-      e.thrustFill.style.height = `${(car.thrustFuel / 4) * 100}%`;
-      e.thrust.classList.toggle('firing', car.thrusting);
+    if (!e.gas.hidden) {
+      const g = car.gasPct;
+      e.gasFill.style.width = `${g}%`;
+      e.gasPct.textContent = `${Math.round(g)}%`;
+      e.gas.classList.toggle('firing', car.thrusting || car.lifting);
+      e.gas.classList.toggle('low', g < 15);
+    }
+    const flying = car.mode === 'air' || car.mode === 'rail';
+    e.alt.classList.toggle('on', flying);
+    if (flying) {
+      const up = car.up3()[1];
+      e.alt.textContent = `${car.mode === 'rail' ? 'ON THE RAMP' : 'AIRBORNE'} · ${Math.round(car.y * (units === 'mph' ? 3.28084 : 1))} ${units === 'mph' ? 'ft' : 'm'}${up < 0 ? ' · INVERTED' : ''}`;
     }
     e.ap.classList.toggle('on', autopilot);
     e.launch.classList.toggle('on', launchArmed);
 
-    this.drawG(car.longAcc / G, car.latAcc / G);
+    if (car.mode === 'air') this.drawG(-car.vel[1] / 30, 0);
+    else this.drawG(car.longAcc / G, car.latAcc / G);
   }
 
   drawG(lon, lat) {
@@ -195,12 +207,27 @@ export class Hud {
     c.fillText(`${total.toFixed(2)} g`, cx, s - 2);
   }
 
-  drawMap(car) {
+  drawMap(car, arena = null) {
     if (this.map.hidden || !this.mapBg) return;
     const c = this.mctx;
     const s = this.map.width;
     c.clearRect(0, 0, s, s);
     c.drawImage(this.mapBg, 0, 0);
+    if (arena) {
+      for (const r of arena.rings) {
+        const [x, y] = this.mapTf(r.x, r.z);
+        c.strokeStyle = r.passed ? '#35ff7a' : '#29d3ff';
+        c.lineWidth = 2;
+        c.beginPath();
+        c.arc(x, y, 3, 0, Math.PI * 2);
+        c.stroke();
+      }
+      for (const r of arena.rails) {
+        const [x, y] = this.mapTf(r.x, r.z - 6);
+        c.fillStyle = '#f2c230';
+        c.fillRect(x - 3, y - 3, 6, 6);
+      }
+    }
     const [x, y] = this.mapTf(car.x, car.z);
     c.save();
     c.translate(x, y);

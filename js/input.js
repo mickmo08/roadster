@@ -9,14 +9,16 @@ const ACTION_KEYS = {
   KeyT: 'autopilot',
   KeyR: 'reverse',
   KeyM: 'mute',
+  KeyF: 'reset',
+  Backspace: 'reset',
   Enter: 'confirm',
 };
 
 export class Input {
   constructor() {
     this.keys = new Set();
-    this.state = { throttle: 0, brake: 0, steer: 0, boost: false };
-    this.touch = { throttle: 0, brake: 0, left: false, right: false, boost: false };
+    this.state = { throttle: 0, brake: 0, steer: 0, boost: false, lift: false, roll: 0 };
+    this.touch = { throttle: 0, brake: 0, left: false, right: false, boost: false, lift: false, rollL: false, rollR: false };
     this.tilt = { enabled: false, value: 0 };
     this.onAction = () => {};
     this.capture = false; // swallow arrow/space when the game is running
@@ -55,6 +57,9 @@ export class Input {
     bindHold($('[data-touch=left]'), () => (this.touch.left = true), () => (this.touch.left = false));
     bindHold($('[data-touch=right]'), () => (this.touch.right = true), () => (this.touch.right = false));
     bindHold($('[data-touch=boost]'), () => (this.touch.boost = true), () => (this.touch.boost = false));
+    bindHold($('[data-touch=lift]'), () => (this.touch.lift = true), () => (this.touch.lift = false));
+    bindHold($('[data-touch=rollL]'), () => (this.touch.rollL = true), () => (this.touch.rollL = false));
+    bindHold($('[data-touch=rollR]'), () => (this.touch.rollR = true), () => (this.touch.rollR = false));
   }
 
   async enableTilt() {
@@ -83,7 +88,7 @@ export class Input {
   }
 
   /** Smooth digital inputs into analog control values. */
-  update(dt, speed = 0) {
+  update(dt, speed = 0, airborne = false) {
     const k = this.keys;
     const up = k.has('ArrowUp') || k.has('KeyW') || this.touch.throttle > 0;
     const down = k.has('ArrowDown') || k.has('KeyS') || this.touch.brake > 0;
@@ -96,12 +101,20 @@ export class Input {
 
     const target = (left ? 1 : 0) - (right ? 1 : 0);
     // Slower steering response at speed keeps keyboard driving stable.
-    const rate = (target === 0 ? 5 : 2.6) / (1 + Math.abs(speed) / 40);
+    // In the air A/D yaws the car, so respond quickly there.
+    const rate = airborne ? 8 : (target === 0 ? 5 : 2.6) / (1 + Math.abs(speed) / 40);
     if (s.steer < target) s.steer = Math.min(target, s.steer + dt * rate * (s.steer < 0 && target >= 0 ? 2 : 1));
     else if (s.steer > target) s.steer = Math.max(target, s.steer - dt * rate * (s.steer > 0 && target <= 0 ? 2 : 1));
     if (this.tilt.enabled && !left && !right) s.steer = this.tilt.value;
 
-    s.boost = k.has('Space') || k.has('ShiftLeft') || k.has('ShiftRight') || this.touch.boost;
+    s.boost = k.has('ShiftLeft') || k.has('ShiftRight') || this.touch.boost;
+    s.lift = k.has('Space') || this.touch.lift;
+    s.roll = (k.has('KeyE') || this.touch.rollR ? 1 : 0) - (k.has('KeyQ') || this.touch.rollL ? 1 : 0);
+    if (airborne) {
+      // Full-strength pitch inputs in the air, no throttle ramp.
+      s.throttle = up ? 1 : 0;
+      s.brake = down ? 1 : 0;
+    }
 
     this.pollGamepad();
     return s;
@@ -118,7 +131,17 @@ export class Input {
       if (rt > 0.05) s.throttle = rt;
       if (lt > 0.05) s.brake = lt;
       if (Math.abs(ax) > 0.08) s.steer = -Math.sign(ax) * ((Math.abs(ax) - 0.08) / 0.92) ** 1.5;
-      if (p.buttons[0]?.pressed) s.boost = true;
+      if (p.buttons[0]?.pressed) s.lift = true;
+      if (p.buttons[1]?.pressed) s.boost = true;
+      const lb = p.buttons[4]?.pressed ? 1 : 0;
+      const rb = p.buttons[5]?.pressed ? 1 : 0;
+      if (lb || rb) s.roll = rb - lb;
+      const ay = p.axes[1] ?? 0;
+      if (Math.abs(ay) > 0.2 && s.throttle < 0.05 && s.brake < 0.05) {
+        // Left stick up/down pitches in the air.
+        if (ay < 0) s.throttle = -ay;
+        else s.brake = ay;
+      }
       const edge = (i, action) => {
         const pressed = !!p.buttons[i]?.pressed;
         if (pressed && !this.padPrev[i]) this.onAction(action);
@@ -127,7 +150,8 @@ export class Input {
       edge(3, 'camera');
       edge(9, 'pause');
       edge(2, 'autopilot');
-      edge(1, 'reverse');
+      edge(8, 'reset');
+      edge(12, 'reverse');
       break;
     }
   }

@@ -1,6 +1,8 @@
-// Game modes: drag strip, top-speed run, circuit laps and free cruise.
+// Game modes: Proving Ground (stunts), drag strip, top-speed run, circuit laps,
+// free cruise, and the menu showroom.
 import { MPH } from './car.js';
-import { makeCircuit, makeStraight } from './track.js';
+import { makeCircuit, makeRing, makeStraight } from './track.js';
+import { ARENA_CENTER, ARENA_RADIUS, START, TURNTABLE, PADS, RECHARGE, blockAt } from './arena.js';
 import { fmtLap, fmtSec, fmtSpeed, fmtDist } from './format.js';
 
 const QUARTER = 402.336;
@@ -42,7 +44,7 @@ class BaseMode {
   }
 
   speedSplits() {
-    return this.units === 'mph' ? [60, 100, 150, 200, 250].map((x) => [x, x * MPH, `0–${x} mph`]) : [100, 200, 300, 400].map((x) => [x, x / 3.6, `0–${x} km/h`]);
+    return this.units === 'mph' ? [60, 100, 150, 200, 230].map((x) => [x, x * MPH, `0–${x} mph`]) : [100, 200, 300, 370].map((x) => [x, x / 3.6, `0–${x} km/h`]);
   }
 
   controls(c) {
@@ -54,6 +56,9 @@ class BaseMode {
   }
 
   onEndBarrier() {}
+
+  /** Car physics events: takeoff, land, crash, railEnter, railComplete, bump, respawn. */
+  onCarEvent() {}
 
   frame() {}
 }
@@ -180,7 +185,7 @@ export class DragMode extends BaseMode {
     if (this.done) return c;
     // Launch mode during the tree, release with a sharp 0.12 s reaction.
     if (this.t < this.green + 0.12) return { throttle: this.t > 1.2 ? 1 : 0, brake: 1, steer: c.steer, boost: false };
-    return { throttle: 1, brake: 0, steer: c.steer, boost: this.game.car.thrusterPack };
+    return { throttle: 1, brake: 0, steer: c.steer, boost: this.game.car.trim.rearThrust > 0 };
   }
 
   onEndBarrier() {
@@ -215,7 +220,7 @@ export class DragMode extends BaseMode {
       tone: this.foul ? 'bad' : '',
       subtitle: this.foul ? 'You left before the green. Times shown, but they don’t count.' : newEt ? 'New personal best ¼ mile!' : bestEt ? `Personal best ¼ mile: ${fmtSec(bestEt)}` : '',
       lines,
-      note: 'Announced targets: 0–60 mph in 1.9 s · ¼ mile in 8.8 s. Launch Mode (brake + throttle, then release) is the difference between a good and a great run.',
+      note: `Announced 0–60 mph: Performance under 1.6 s · Thrust under 0.9 s · Rocket under 0.59 s. You drove the ${this.game.car.trim.name}${this.game.car.trim.rearThrust ? ' (hold Shift for the cold-gas thrusters)' : ''}. Launch Mode (brake + throttle, then release) is worth about a tenth.`,
     });
   }
 }
@@ -318,7 +323,7 @@ export class TopSpeedMode extends BaseMode {
       tone: crashed ? 'bad' : '',
       subtitle: crashed ? `Hit the end barrier at ${fmtSpeed(this.endHit, this.units)}. Brake earlier!` : isBest ? 'New personal top speed!' : `Personal best: ${fmtSpeed(this.game.best.get('top_speed') ?? 0, this.units)}`,
       lines,
-      note: 'Announced target: 250+ mph (400+ km/h). The car is electronically limited at 250 mph here.',
+      note: 'Announced: speeds exceeding 230 mph. The sim limits the car at 235 mph.',
     });
   }
 }
@@ -467,9 +472,172 @@ export class CircuitMode extends BaseMode {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+
+const ARENA_CFG = () => ({
+  track: makeRing(360, ARENA_CENTER[0], ARENA_CENTER[1], 12),
+  theme: 'arena',
+  decor: 'arena',
+  wallOffset: 1e6,
+  hasWalls: false,
+  arena: true,
+  bounds: { x: ARENA_CENTER[0], z: ARENA_CENTER[1], r: ARENA_RADIUS },
+  aiLane: 0,
+});
+
+const CHALLENGES = [
+  { id: 'reveal', title: 'Recreate the reveal', hint: 'Up the reveal ramp, launch inverted, land on your wheels', trim: 'rocket', points: 5000 },
+  { id: 'lineup', title: 'Jump the lineup', hint: 'Hit the kicker at 90+ mph and clear all five vehicles', points: 2500 },
+  { id: 'loop', title: 'Fan loop', hint: 'Drive the full loop: the suction fans hold you on', points: 2000 },
+  { id: 'hang', title: 'Hang upside down', hint: 'Stop past vertical on the reveal ramp for 2 s', points: 2000 },
+  { id: 'flip', title: 'Flip it', hint: 'Land a full flip (W/S in the air)', points: 2500 },
+  { id: 'roll', title: 'Barrel roll', hint: 'Land a full roll (Q/E in the air)', trim: 'rocket', points: 2500 },
+  { id: 'hover', title: 'Hover 5 seconds', hint: 'Hold Lift in one flight for 5 s', trim: 'rocket', points: 2000 },
+  { id: 'tower', title: 'Tower landing', hint: 'Land on the 30 m tower pad', trim: 'rocket', points: 4000 },
+  { id: 'bullseye', title: 'Bullseye', hint: 'Land within 2.5 m of an X pad', points: 3000 },
+  { id: 'rings', title: 'Ring run', hint: 'Fly through all six sky rings', trim: 'rocket', points: 4000 },
+  { id: 'long', title: 'Long jump', hint: 'Fly 120 m in one jump', points: 2000 },
+];
+
+export class StuntMode extends BaseMode {
+  static id = 'stunt';
+  title = 'Proving Ground';
+
+  config() {
+    return { ...ARENA_CFG(), start: START };
+  }
+
+  start() {
+    this.t = 0;
+    this.score = 0;
+    this.done = new Set();
+    this.hang = 0;
+    this.ringsPassed = new Set();
+    this.recharged = false;
+    this.game.world.arena?.resetRings();
+    const trim = this.game.car.trim;
+    const tip =
+      trim.key === 'rocket'
+        ? 'Rocket: Space = lift · Shift = thrust · W/S pitch · A/D yaw · Q/E roll in the air'
+        : trim.key === 'thrust'
+          ? 'Thrust: Shift / Space = rear cold-gas jets · try the kicker and the fan loop'
+          : 'Performance: suction fans on · try the fan loop and the lineup jump';
+    this.game.hud.banner(tip, 4200, 'hint');
+  }
+
+  complete(id) {
+    if (this.done.has(id)) return;
+    const c = CHALLENGES.find((x) => x.id === id);
+    if (!c) return;
+    this.done.add(id);
+    this.score += c.points;
+    this.game.best.check('stunt_score', this.score, 'max');
+    this.game.audio.beep(1480, 0.25);
+    setTimeout(() => {
+      if (this.game.mode === this) this.game.hud.banner(`✓ ${c.title}  +${c.points.toLocaleString()}`, 2600, 'go');
+    }, 900);
+  }
+
+  step(h, car) {
+    this.t += h;
+    // Hang upside down on the reveal ramp
+    if (car.mode === 'rail' && car.rail.def.id === 'reveal' && car.rail.s / car.rail.def.radius > Math.PI * 0.6 && Math.abs(car.v) < 2.5) {
+      this.hang += h;
+      if (this.hang > 2) this.complete('hang');
+    } else this.hang = 0;
+    // Sky rings
+    const arena = this.game.world.arena;
+    if (arena && car.mode === 'air') {
+      arena.rings.forEach((r, i) => {
+        if (r.passed) return;
+        const dx = car.x - r.x;
+        const dy = car.y + 0.6 - r.y;
+        const dz = car.z - r.z;
+        const nx = -Math.sin(r.yaw);
+        const nz = -Math.cos(r.yaw);
+        const along = dx * nx + dz * nz;
+        const radial = Math.hypot(dx - along * nx, dy, dz - along * nz);
+        if (Math.abs(along) < 2.5 && radial < r.r - 0.5) {
+          arena.markRing(i);
+          this.score += 250;
+          this.game.audio.beep(1100 + i * 120, 0.15);
+          const n = arena.rings.filter((x) => x.passed).length;
+          this.game.hud.banner(`Ring ${n} / ${arena.rings.length}`, 1200, 'split');
+          if (n === arena.rings.length) this.complete('rings');
+        }
+      });
+    }
+    // Gas recharge pad
+    const onRecharge = Math.abs(car.x - RECHARGE.x) < RECHARGE.half && Math.abs(car.z - RECHARGE.z) < RECHARGE.half && car.mode === 'ground';
+    if (onRecharge && car.trim.gas > 0 && car.gas < car.trim.gas - 0.05 && car.speed < 3) {
+      car.gas = Math.min(car.trim.gas, car.gas + h * 6);
+      if (!this.recharged) this.game.hud.banner('Recharging COPVs…', 1200, 'split');
+      this.recharged = true;
+    } else this.recharged = false;
+  }
+
+  onCarEvent(e) {
+    if (e.type === 'railComplete' && e.id === 'loop') this.complete('loop');
+    if (e.type !== 'land') return;
+    const pts = Math.round((e.airtime * 150 + e.dist * 4 + Math.max(0, e.height) * 12 + (e.flips + e.rolls) * 1200 + e.spins * 600) * (e.perfect ? 1.5 : 1));
+    if (e.airtime > 0.5) this.score += pts;
+    this.game.best.check('stunt_score', this.score, 'max');
+    if (e.from === 'reveal') this.complete('reveal');
+    if (e.from === 'kicker' && e.z < -186) this.complete('lineup');
+    if (e.flips >= 1) this.complete('flip');
+    if (e.rolls >= 1) this.complete('roll');
+    if (e.liftTime >= 5) this.complete('hover');
+    if (e.y > 25) this.complete('tower');
+    if (e.dist >= 120) this.complete('long');
+    for (const p of PADS) {
+      if (p.id !== 'tower' && Math.hypot(e.x - p.x, e.z - p.z) < 2.5) this.complete('bullseye');
+    }
+    return pts;
+  }
+
+  hudLines() {
+    const trim = this.game.car.trim.key;
+    const lines = [
+      ['Score', this.score.toLocaleString()],
+      ['Best', (this.game.best.get('stunt_score') ?? 0).toLocaleString()],
+      ['Challenges', `${this.done.size} / ${CHALLENGES.length}`],
+    ];
+    const todo = CHALLENGES.filter((c) => !this.done.has(c.id)).sort((a, b) => (a.trim && a.trim !== trim ? 1 : 0) - (b.trim && b.trim !== trim ? 1 : 0));
+    for (const c of todo.slice(0, 4)) lines.push([`○ ${c.title}`, c.trim && c.trim !== trim ? 'Rocket' : '', c.trim && c.trim !== trim ? 'dim' : '']);
+    return lines;
+  }
+
+  challengeList() {
+    return CHALLENGES.map((c) => ({ ...c, done: this.done.has(c.id) }));
+  }
+}
+
+/** Menu backdrop: the car on a turntable at the Proving Ground, doors up. */
+export class ShowroomMode extends BaseMode {
+  static id = 'showroom';
+  title = 'Showroom';
+  showroom = true;
+
+  config() {
+    return { ...ARENA_CFG(), start: { x: TURNTABLE.x, z: TURNTABLE.z, heading: 0.6 } };
+  }
+
+  start() {}
+
+  step() {}
+
+  hudLines() {
+    return [];
+  }
+}
+
+export { blockAt };
+
 export const MODE_LIST = [
-  { id: 'drag', make: (g) => new DragMode(g), title: 'Drag Strip', desc: 'Stage, watch the tree, launch. Chase the announced 1.9 s 0–60 and 8.8 s ¼ mile.', tag: '¼ mile' },
-  { id: 'top', make: (g) => new TopSpeedMode(g), title: 'Top Speed', desc: 'Nine kilometres of salt flat. Find 250 mph — then find the brakes.', tag: '250+ mph' },
-  { id: 'circuit', make: (g) => new CircuitMode(g, 3), title: 'Coast Circuit', desc: 'Three timed laps of a 6.7 km island circuit — fast sweepers and a hairpin.', tag: '3 laps' },
-  { id: 'cruise', make: (g) => new CircuitMode(g, 0), title: 'Free Cruise', desc: 'No clock. Roof off, ocean views, one-pedal driving and range in mind.', tag: 'Relax' },
+  { id: 'stunt', make: (g) => new StuntMode(g), title: 'Proving Ground', desc: 'The reveal, recreated: inverted ramp, fan loop, lineup jump, tower pad and sky rings.', tag: 'Fly · flip · land' },
+  { id: 'drag', make: (g) => new DragMode(g), title: 'Drag Strip', desc: 'Stage, watch the tree, launch. Chase the announced sub-second 0–60.', tag: '¼ mile' },
+  { id: 'top', make: (g) => new TopSpeedMode(g), title: 'Top Speed', desc: 'Nine kilometres of salt flat. Find 230+ mph, then find the brakes.', tag: '230+ mph' },
+  { id: 'circuit', make: (g) => new CircuitMode(g, 3), title: 'Coast Circuit', desc: 'Three timed laps of a 6.7 km island circuit: fast sweepers and a hairpin.', tag: '3 laps' },
+  { id: 'cruise', make: (g) => new CircuitMode(g, 0), title: 'Free Cruise', desc: 'No clock. Ocean views, one-pedal driving and range in mind.', tag: 'Relax' },
 ];

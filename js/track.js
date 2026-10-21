@@ -213,3 +213,14 @@ export function makeCircuit(width = 14) {
   }
   return new Track(pts, { closed: true, width });
 }
+
+/** Plain circular service road (used around the Proving Ground). */
+export function makeRing(radius, cx = 0, cz = 0, width = 12) {
+  const pts = [];
+  const N = Math.round((2 * Math.PI * radius) / 2);
+  for (let k = 0; k < N; k++) {
+    const th = (k / N) * Math.PI * 2;
+    pts.push({ x: cx + radius * Math.cos(th), z: cz - radius * Math.sin(th) });
+  }
+  return new Track(pts, { closed: true, width });
+}

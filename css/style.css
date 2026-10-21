@@ -916,3 +916,199 @@ body.touch #launch {
     top: 40%;
   }
 }
+
+/* ---------------- 2026 additions: trims, gas, altitude, flight controls ---------------- */
+.trims {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.trim {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+.trim strong {
+  font-size: 16px;
+}
+.trim span {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+.trim em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 4px;
+}
+.trim.on {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+.trim.on span {
+  color: #444;
+}
+.blurb {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #cfd3da;
+  line-height: 1.45;
+}
+.fine {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.fine a {
+  color: var(--text);
+}
+.trim-table {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr 1fr;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 13px;
+}
+.trim-table > div {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--line);
+}
+.trim-table .th {
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.05);
+}
+.trim-table .rh {
+  color: var(--muted);
+}
+.lines .row.dim,
+.lines .row.dim b {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.gas {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.gas-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+.gas-shell {
+  width: 64px;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+#gas-fill {
+  height: 100%;
+  background: #bfe3ff;
+}
+.gas.firing #gas-fill {
+  background: #fff;
+  box-shadow: 0 0 10px #bfe3ff;
+}
+.gas.low #gas-fill {
+  background: #ff5a5a;
+}
+
+#alt {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(62, 140, 255, 0.85);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  display: none;
+  white-space: nowrap;
+}
+#alt.on {
+  display: block;
+}
+
+/* Touch: flight buttons appear for the trims that have them */
+.steer-pad {
+  grid-template-rows: auto 72px auto;
+}
+.steer-pad .roll {
+  height: 44px;
+  font-size: 18px;
+  display: none;
+}
+body[data-trim='rocket'] .steer-pad .roll {
+  display: block;
+}
+.pedals {
+  grid-template-rows: auto auto 110px;
+}
+.pedals .lift,
+.pedals .boost {
+  grid-column: span 2;
+  font-size: 12px;
+  padding: 10px;
+}
+.pedals .lift {
+  background: rgba(62, 140, 255, 0.35) !important;
+  display: none;
+}
+body[data-trim='rocket'] .pedals .lift {
+  display: block;
+}
+body[data-trim='performance'] .pedals .boost {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .trims {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  .trim {
+    padding: 8px;
+  }
+  .trim span {
+    display: none;
+  }
+}
+
+/* Short landscape phones: keep the flight buttons clear of the HUD. */
+@media (max-height: 520px) {
+  body.touch #minimap {
+    display: none;
+  }
+  .lines .row:nth-child(n + 5) {
+    display: none;
+  }
+  .hud-tl {
+    padding: 6px 10px;
+  }
+  body.touch .cluster {
+    top: 8px;
+    padding: 4px 14px 6px;
+  }
+  body.touch #speed {
+    font-size: 40px;
+  }
+  body.touch #banner {
+    top: 46%;
+  }
+  #alt {
+    top: 120px;
+  }
+}

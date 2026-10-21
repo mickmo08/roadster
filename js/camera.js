@@ -45,22 +45,21 @@ export class CameraRig {
    * @param {import('./track.js').Track} track
    * @param {number} trackS
    */
-  update(dt, car, body, phys, track, trackS, { attract = false } = {}) {
+  update(dt, car, body, phys, track, trackS, { attract = false, driverX = -0.36, arena = false } = {}) {
     const cam = this.camera;
-    const v = Math.abs(phys.v);
+    const v = phys.speed ?? Math.abs(phys.v);
     const speedK = Math.min(1, v / 110);
     let fov = 62;
     const tmp = new THREE.Vector3();
 
     if (attract) {
-      // Slow orbit around the car for the menu background.
-      this.orbit += dt * 0.12;
-      const r = 8.5;
-      tmp.set(Math.sin(this.orbit) * r, 2.2 + Math.sin(this.orbit * 0.7) * 0.6, Math.cos(this.orbit) * r);
-      car.localToWorld(tmp);
+      // Slow orbit around the car on the showroom turntable.
+      this.orbit += dt * 0.1;
+      const r = 8.2;
+      tmp.set(Math.sin(this.orbit) * r, 1.9 + Math.sin(this.orbit * 0.7) * 0.5, Math.cos(this.orbit) * r).add(car.position);
       this.pos.lerp(tmp, this.snap ? 1 : 1 - Math.exp(-dt * 3));
-      this.look.copy(car.position).add(new THREE.Vector3(0, 0.8, 0));
-      fov = 45;
+      this.look.copy(car.position).add(new THREE.Vector3(0, 0.6, 0));
+      fov = 42;
     } else if (this.mode === 'chase') {
       const back = 6.4 + speedK * 1.4 - Math.max(-0.6, Math.min(0.8, phys.longAcc / 18));
       tmp.set(0, 1.9 + speedK * 0.2, back);
@@ -73,11 +72,22 @@ export class CameraRig {
       this.look.lerp(lookTarget, this.snap ? 1 : 1 - Math.exp(-dt * 12));
       fov = 60 + speedK * 20;
     } else if (this.mode === 'hood' || this.mode === 'cockpit') {
-      const local = this.mode === 'hood' ? new THREE.Vector3(0, 1.22, -1.3) : new THREE.Vector3(-0.38, 1.4, 0.1);
+      const local = this.mode === 'hood' ? new THREE.Vector3(0, 0.98, -1.15) : new THREE.Vector3(driverX, 1.1, 0.42);
       body.localToWorld(this.pos.copy(local));
-      const ahead = this.mode === 'hood' ? new THREE.Vector3(0, 1.0, -30) : new THREE.Vector3(-0.38, 1.0, -30);
+      const ahead = this.mode === 'hood' ? new THREE.Vector3(0, 0.8, -30) : new THREE.Vector3(driverX, 0.95, -30);
       body.localToWorld(this.look.copy(ahead));
       fov = (this.mode === 'hood' ? 68 : 72) + speedK * 14;
+    } else if (arena) {
+      // Arena: a handheld-style camera parked off to the side, re-placed as the car moves on.
+      if (!this.tvSpot || this.tvSpot.pos.distanceTo(car.position) > 90) {
+        const a = Math.random() * Math.PI * 2;
+        const ahead = new THREE.Vector3(-Math.sin(car.rotation.y), 0, -Math.cos(car.rotation.y)).multiplyScalar(25 + v * 1.2);
+        this.tvSpot = { pos: car.position.clone().add(ahead).add(new THREE.Vector3(Math.cos(a) * 28, 4 + Math.random() * 6, Math.sin(a) * 28)) };
+        this.tvSpot.pos.y = Math.max(this.tvSpot.pos.y, 3);
+      }
+      this.pos.copy(this.tvSpot.pos);
+      this.look.copy(car.position).add(new THREE.Vector3(0, 0.7, 0));
+      fov = THREE.MathUtils.clamp(2400 / Math.max(this.pos.distanceTo(this.look), 1), 12, 60);
     } else {
       // Trackside: pick a camera spot ahead of the car; switch when it passes.
       if (!this.tvSpot || this.tvSpot.passedAt <= trackS - 25 || this.tvSpot.s - trackS > 400) {

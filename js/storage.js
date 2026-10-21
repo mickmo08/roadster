@@ -2,14 +2,14 @@
 // can be unavailable (private windows, blocked site data) and the game must
 // still run.
 
-const SETTINGS_KEY = 'roadster.settings.v1';
+const SETTINGS_KEY = 'roadster.settings.v2';
 const BEST_KEY = 'roadster.best.v1';
 
 const DEFAULTS = {
   units: 'mph',
-  paint: 'red',
+  paint: 'ano',
+  trim: 'rocket',
   time: 'sunset',
-  thrusters: false,
   sound: true,
   shadows: true,
   camera: 'chase',
