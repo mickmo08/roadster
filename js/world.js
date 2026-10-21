@@ -252,11 +252,12 @@ export class World {
     tex.repeat.set(900, 900);
     const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: theme === 'salt' ? 0.75 : 0.95 });
     let geo;
-    if (theme === 'coast') geo = new THREE.CircleGeometry(1750, 128);
-    else geo = new THREE.PlaneGeometry(30000, 30000);
+    if (theme === 'coast') geo = new THREE.CircleGeometry(1750, 128, 0, Math.PI * 2);
+    // Subdivided: two giant triangles lose depth precision and swallow the road on some GPUs.
+    else geo = new THREE.PlaneGeometry(30000, 30000, 120, 120);
     const ground = new THREE.Mesh(geo, mat);
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.02;
+    ground.position.y = -0.12; // well below the road so low-precision depth buffers don't z-fight
     ground.receiveShadow = true;
     this.scene.add(ground);
     if (theme === 'coast') tex.repeat.set(110, 110);
@@ -272,7 +273,7 @@ export class World {
       ctx.fillRect(s * 0.68, 0, s * 0.14, s);
     });
     asphalt.repeat.set(1, 1);
-    const roadMat = new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.82, metalness: 0 });
+    const roadMat = new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.82, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const road = new THREE.Mesh(ribbon(track, w, -w, 0.0, { uvLen: track.width }), roadMat);
     road.receiveShadow = true;
     this.scene.add(road);

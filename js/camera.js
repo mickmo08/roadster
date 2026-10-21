@@ -6,7 +6,7 @@ const LABELS = { chase: 'Chase cam', cockpit: 'Driver seat', hood: 'Hood cam', t
 
 export class CameraRig {
   constructor(aspect) {
-    this.camera = new THREE.PerspectiveCamera(62, aspect, 0.1, 30000);
+    this.camera = new THREE.PerspectiveCamera(62, aspect, 0.2, 25000);
     this.mode = 'chase';
     this.pos = new THREE.Vector3(0, 3, 8);
     this.look = new THREE.Vector3();
