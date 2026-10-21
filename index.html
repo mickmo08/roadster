@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#0b0c10" />
+    <title>Roadster Drive</title>
+    <meta name="description" content="Drive an electric hypercar roadster in your browser: drag strip launches, 250 mph salt-flat runs, a coastal circuit and a free cruise." />
+    <link rel="stylesheet" href="css/style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body class="loading">
+    <canvas id="scene"></canvas>
+
+    <div id="loader">Warming up the battery…</div>
+
+    <!-- ===================== MENU ===================== -->
+    <section id="menu" class="overlay">
+      <div class="menu-inner">
+        <header class="brand">
+          <p class="eyebrow">Electric hypercar · 2+2 · removable glass roof</p>
+          <h1>Roadster <span>Drive</span></h1>
+          <p class="lede">Feel what 1.9 seconds to 60 actually is. Pick an experience.</p>
+        </header>
+
+        <div id="modes" class="modes"></div>
+
+        <div class="config">
+          <div class="cfg-block">
+            <h3>Paint <span id="paint-name" class="muted"></span></h3>
+            <div id="paints" class="paints"></div>
+          </div>
+          <div class="cfg-block">
+            <h3>Time of day</h3>
+            <div id="opt-time" class="seg">
+              <button data-v="day">Day</button><button data-v="sunset">Sunset</button><button data-v="night">Night</button>
+            </div>
+          </div>
+          <div class="cfg-block">
+            <h3>Units</h3>
+            <div id="opt-units" class="seg"><button data-v="mph">mph</button><button data-v="kmh">km/h</button></div>
+          </div>
+          <div class="cfg-block">
+            <h3>Thruster pack <span class="muted">rumored option</span></h3>
+            <div id="opt-thrusters" class="seg"><button data-v="false">Off</button><button data-v="true">On</button></div>
+          </div>
+          <div class="cfg-block">
+            <h3>Sound</h3>
+            <div id="opt-sound" class="seg"><button data-v="true">On</button><button data-v="false">Off</button></div>
+          </div>
+          <div class="cfg-block">
+            <h3>Shadows</h3>
+            <div id="opt-shadows" class="seg"><button data-v="true">On</button><button data-v="false">Off</button></div>
+          </div>
+        </div>
+
+        <footer class="menu-foot">
+          <div class="keys">
+            <span><kbd>W</kbd>/<kbd>↑</kbd> accelerate</span>
+            <span><kbd>S</kbd>/<kbd>↓</kbd> brake</span>
+            <span><kbd>A</kbd><kbd>D</kbd> steer</span>
+            <span><kbd>Space</kbd> thrusters</span>
+            <span><kbd>C</kbd> camera</span>
+            <span><kbd>T</kbd> autopilot</span>
+            <span><kbd>R</kbd> reverse</span>
+            <span><kbd>Esc</kbd> pause</span>
+          </div>
+          <button id="btn-specs" class="link">The car &amp; the numbers →</button>
+        </footer>
+      </div>
+    </section>
+
+    <!-- ===================== SPECS ===================== -->
+    <section id="specs" class="overlay modal" hidden>
+      <div class="card">
+        <h2>The car &amp; the numbers</h2>
+        <p class="muted">Announced targets from the 2017 reveal. The simulation is tuned to the 0–60 and ¼-mile figures; mass, drag and power are estimates, so other numbers land close but not exact.</p>
+        <div class="spec-grid">
+          <div><b>1.9 s</b><span>0–60 mph</span></div>
+          <div><b>4.2 s</b><span>0–100 mph</span></div>
+          <div><b>8.8 s</b><span>¼ mile</span></div>
+          <div><b>250+ mph</b><span>top speed</span></div>
+          <div><b>620 mi</b><span>range</span></div>
+          <div><b>10,000 Nm</b><span>wheel torque</span></div>
+          <div><b>200 kWh</b><span>battery</span></div>
+          <div><b>3 motors</b><span>all-wheel drive</span></div>
+        </div>
+        <h3>Things to try</h3>
+        <ul class="tips">
+          <li><b>Launch Mode:</b> hold brake and throttle together on the line, release on green. Skip it and the torque ramps in — you’ll lose about a tenth.</li>
+          <li><b>One-pedal driving:</b> lift off and regen slows you at ~0.2 g, putting energy back in the pack. Watch the green side of the power bar.</li>
+          <li><b>Driver seat cam (C):</b> roof off, wind noise up — the best way to feel the shove.</li>
+          <li><b>G-meter:</b> on a perfect launch you’ll see roughly 1.4 g. With the thruster pack, more.</li>
+          <li><b>Autopilot ride-along (T):</b> let the car drive and just watch the numbers.</li>
+        </ul>
+        <button id="btn-specs-close" class="primary">Got it</button>
+      </div>
+    </section>
+
+    <!-- ===================== HUD ===================== -->
+    <div id="hud" hidden>
+      <div class="hud-tl panel">
+        <div id="hud-mode" class="hud-mode"></div>
+        <div id="hud-lines" class="lines"></div>
+      </div>
+
+      <div class="hud-tr">
+        <div class="btn-row">
+          <button id="btn-ap" class="icon-btn" title="Autopilot (T)" aria-label="Autopilot">AP</button>
+          <button id="btn-camera" class="icon-btn" title="Camera (C)" aria-label="Change camera">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm8 3a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+          </button>
+          <button id="btn-pause" class="icon-btn" title="Pause (Esc)" aria-label="Pause">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>
+          </button>
+        </div>
+        <canvas id="minimap" width="170" height="170" hidden></canvas>
+      </div>
+
+      <div id="tree" class="tree" hidden>
+        <i data-light="prestage" class="w"></i><i data-light="stage" class="w"></i>
+        <i data-light="amber1" class="a"></i><i data-light="amber2" class="a"></i><i data-light="amber3" class="a"></i>
+        <i data-light="green" class="g"></i><i data-light="red" class="r"></i>
+      </div>
+
+      <div id="banner"></div>
+      <div id="toast"></div>
+      <div id="launch">LAUNCH MODE READY · release brake</div>
+
+      <div class="cluster panel">
+        <div id="gear" class="gear"><span>P</span><span>R</span><span>N</span><span>D</span></div>
+        <div class="speedo">
+          <div id="speed">0</div>
+          <div id="units">MPH</div>
+        </div>
+        <div class="power">
+          <div class="power-bar"><div id="power-neg"></div><div id="power-pos"></div></div>
+          <div id="power-label">0 kW</div>
+        </div>
+        <div id="ap" class="ap">AUTOPILOT</div>
+      </div>
+
+      <div class="hud-bl panel">
+        <div class="batt">
+          <div class="batt-shell"><div id="batt-fill"></div></div>
+          <span id="batt-pct">90%</span>
+        </div>
+        <div id="range" class="range">560 mi</div>
+        <div id="thrust" class="thrust" hidden>
+          <div class="thrust-shell"><div id="thrust-fill"></div></div>
+          <span>THRUST</span>
+        </div>
+      </div>
+
+      <div class="hud-br panel">
+        <canvas id="gmeter" width="120" height="120"></canvas>
+      </div>
+    </div>
+
+    <!-- ===================== TOUCH ===================== -->
+    <div id="touch">
+      <div class="steer-pad">
+        <button data-touch="left" aria-label="Steer left">◀</button>
+        <button data-touch="right" aria-label="Steer right">▶</button>
+        <button id="btn-tilt" class="tilt-btn">Tilt steer</button>
+      </div>
+      <div class="pedals">
+        <button data-touch="boost" class="boost" aria-label="Thrusters">BOOST</button>
+        <button data-touch="brake" class="brake" aria-label="Brake">BRAKE</button>
+        <button data-touch="throttle" class="throttle" aria-label="Accelerate">GO</button>
+      </div>
+    </div>
+
+    <!-- ===================== PAUSE / RESULTS ===================== -->
+    <section id="pause" class="overlay modal" hidden>
+      <div class="card narrow">
+        <h2>Paused</h2>
+        <button id="btn-resume" class="primary">Resume</button>
+        <button id="btn-restart">Restart</button>
+        <button id="btn-quit">Main menu</button>
+      </div>
+    </section>
+
+    <section id="results" class="overlay modal" hidden>
+      <div class="card">
+        <h2 id="res-title"></h2>
+        <p id="res-sub" class="sub"></p>
+        <div id="res-lines" class="lines big"></div>
+        <p id="res-note" class="muted"></p>
+        <div class="btns">
+          <button id="btn-retry" class="primary">Run it again <kbd>Enter</kbd></button>
+          <button id="btn-menu">Main menu</button>
+        </div>
+      </div>
+    </section>
+
+    <noscript>This game needs JavaScript and WebGL.</noscript>
+    <script type="module" src="js/main.js"></script>
+    <script>
+      // Surface fatal load errors (e.g. no WebGL, CDN blocked) instead of a blank screen.
+      addEventListener('error', (e) => {
+        const l = document.getElementById('loader');
+        if (l && document.body.classList.contains('loading')) l.textContent = 'Could not start: ' + (e.message || 'unknown error');
+      });
+    </script>
+  </body>
+</html>
